@@ -14,6 +14,7 @@
 #include "Member.h"
 #include "EmulNet.h"
 #include "Queue.h"
+#include <map>
 
 /**
  * Macros
@@ -31,6 +32,7 @@
 enum MsgTypes{
     JOINREQ,
     JOINREP,
+    MEMSHIP, //Membership message.
     DUMMYLASTMSGTYPE
 };
 
@@ -55,7 +57,7 @@ private:
 	Params *par;
 	Member *memberNode;
 	char NULLADDR[6];
-
+    std::map<string, int64_t> timedoutMap;
 public:
 	MP1Node(Member *, Params *, EmulNet *, Log *, Address *);
 	Member * getMemberNode() {
@@ -75,6 +77,10 @@ public:
 	Address getJoinAddress();
 	void initMemberListTable(Member *memberNode);
 	void printAddress(Address *addr);
+    int64_t getTimedoutCounter(Address* addr);
+    void setTimedoutCounter(Address* addr, int64_t counter);
+    void decrementTimedoutCounter(Address* addr);
+    void removeTimedoutCounter(Address* addr);
 	virtual ~MP1Node();
 };
 
