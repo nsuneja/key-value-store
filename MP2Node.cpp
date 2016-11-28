@@ -124,9 +124,10 @@ void MP2Node::clientCreate(string key, string value) {
  * 				3) Sends a message to the replica
  */
 void MP2Node::clientRead(string key) {
-    /*
-     * Implement this
-     */
+    Message msg(curTransId++, this->memberNode->addr, MessageType::READ, key);
+    findNeighbors();
+    dispatchMessages(msg);
+
 }
 
 /**
@@ -139,9 +140,9 @@ void MP2Node::clientRead(string key) {
  * 				3) Sends a message to the replica
  */
 void MP2Node::clientUpdate(string key, string value){
-	/*
-	 * Implement this
-	 */
+    Message msg(curTransId++, this->memberNode->addr, MessageType::UPDATE, key);
+    findNeighbors();
+    dispatchMessages(msg);
 }
 
 /**
@@ -154,9 +155,9 @@ void MP2Node::clientUpdate(string key, string value){
  * 				3) Sends a message to the replica
  */
 void MP2Node::clientDelete(string key){
-	/*
-	 * Implement this
-	 */
+    Message msg(curTransId++, this->memberNode->addr, MessageType::DELETE, key);
+    findNeighbors();
+    dispatchMessages(msg);
 }
 
 /**
