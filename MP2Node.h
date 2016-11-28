@@ -19,6 +19,8 @@
 #include "Message.h"
 #include "Queue.h"
 
+#include <atomic>
+
 /**
  * CLASS NAME: MP2Node
  *
@@ -47,6 +49,8 @@ private:
 	EmulNet * emulNet;
 	// Object of Log
 	Log * log;
+    // Transaction counter
+    std::atomic<uint64_t> curTransId;
 
 public:
 	MP2Node(Member *memberNode, Params *par, EmulNet *emulNet, Log *log, Address *addressOfMember);

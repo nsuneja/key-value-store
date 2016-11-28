@@ -15,6 +15,7 @@ MP2Node::MP2Node(Member *memberNode, Params *par, EmulNet * emulNet, Log * log, 
 	this->log = log;
 	ht = new HashTable();
 	this->memberNode->addr = *address;
+    this->curTransId = 1;
 }
 
 /**
@@ -108,9 +109,9 @@ size_t MP2Node::hashFunction(string key) {
  * 				3) Sends a message to the replica
  */
 void MP2Node::clientCreate(string key, string value) {
-	/*
-	 * Implement this
-	 */
+    Message msg(curTransId++, this->memberNode->addr, MessageType::CREATE, key, value);
+    findNeighbors();
+    dispatchMessages(msg);
 }
 
 /**
@@ -122,10 +123,10 @@ void MP2Node::clientCreate(string key, string value) {
  * 				2) Finds the replicas of this key
  * 				3) Sends a message to the replica
  */
-void MP2Node::clientRead(string key){
-	/*
-	 * Implement this
-	 */
+void MP2Node::clientRead(string key) {
+    /*
+     * Implement this
+     */
 }
 
 /**
@@ -328,4 +329,23 @@ void MP2Node::stabilizationProtocol() {
 	/*
 	 * Implement this
 	 */
+}
+
+
+/**
+ * @brief MP2Node::findNeighbors
+ */
+
+void MP2Node::findNeighbors() {
+
+}
+
+
+/**
+ * @brief MP2Node::dispatchMessages
+ * @param message
+ */
+
+void MP2Node::dispatchMessages(Message message) {
+
 }
