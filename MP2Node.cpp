@@ -241,22 +241,34 @@ void MP2Node::checkMessages() {
                result = createKeyValue(msg.key, msg.value, msg.replica);
                Message replyMsg(msg.transID, this->memberNode->addr,
                                 MessageType::REPLY, result);
-               emulNet->ENsend(&this->memberNode->addr, &msg.fromAddr, replyMsg.toString());
+               emulNet->ENsend(&this->memberNode->addr, &msg.fromAddr,
+                               replyMsg.toString());
            }
            break;
            case MessageType::READ:
            {
-
+               string value(readKey(msg.key));
+               Message replyMsg(msg.transID, this->memberNode->addr, value);
+               emulNet->ENsend(&this->memberNode->addr, &msg.fromAddr,
+                               replyMsg.toString());
            }
            break;
            case MessageType::UPDATE:
            {
-
+               result = updateKeyValue(msg.key, msg.value, msg.replica);
+               Message replyMsg(msg.transID, this->memberNode->addr,
+                                MessageType::REPLY, result);
+               emulNet->ENsend(&this->memberNode->addr, &msg.fromAddr,
+                               replyMsg.toString());
            }
            break;
            case MessageType::DELETE:
            {
-
+               result = deletekey(msg.key);
+               Message replyMsg(msg.transID, this->memberNode->addr,
+                                MessageType::REPLY, result);
+               emulNet->ENsend(&this->memberNode->addr, &msg.fromAddr,
+                               replyMsg.toString());
            }
            break;
            case MessageType::REPLY:
