@@ -53,6 +53,8 @@ void MP2Node::updateRing() {
 	// Sort the list based on the hashCode
 	sort(curMemList.begin(), curMemList.end());
 
+    // Initialize the ring based upong this sorted membership list.
+    this->ring = curMemList;
 
 	/*
 	 * Step 3: Run the stabilization protocol IF REQUIRED
@@ -334,19 +336,45 @@ void MP2Node::stabilizationProtocol() {
 
 
 /**
- * @brief MP2Node::findNeighbors
+ * This method finds its own position on the ring, and populate the sucessors
+ * and predecessor neighbors.
  */
 
 void MP2Node::findNeighbors() {
+    // Iterate through the ring and locate myself on it.
+    int i;
+    for (i = 0; i < ring.size(); i++) {
+        Node& node = ring[i];
+        if (node.nodeAddress == this->memberNode->addr) {
+            // Found ourselves!
+            break;
+        }
+    }
 
+    assert(i != ring.size()); // Ensure that I always find myself in the ring.
+    assert(ring.size() >= 3); // Since each key has 3 replicas.
+
+    // Populate the vector with nodes holding my secondary replicas.
+    hasMyReplicas.clear();
+    hasMyReplicas.push_back(ring[(i+1) % ring.size()]);
+    hasMyReplicas.push_back(ring[(i+2) % ring.size()]);
+
+    // Populate the vector with nodes whose secondary replica I am holding.
+    haveReplicasOf.clear();
+    haveReplicasOf.push_back(ring[(i-2) % ring.size()]);
+    haveReplicasOf.push_back(ring[(i-1) % ring.size()]);
 }
 
 
 /**
- * @brief MP2Node::dispatchMessages
- * @param message
+ * This method dispatches the messages to all the secondary replicas of the key.
+ * @param message IN: Message to send.
  */
 
 void MP2Node::dispatchMessages(Message message) {
-
+    vector<Node>::iterator it;
+    for (it = hasMyReplicas.begin(); it != hasMyReplicas.end(); ++it) {
+        Node& node = *it;
+        emulNet->ENsend(&memberNode->addr, &node.nodeAddress, message.toString());
+    }
 }
