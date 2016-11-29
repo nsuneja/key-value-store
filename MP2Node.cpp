@@ -171,10 +171,7 @@ void MP2Node::clientDelete(string key){
  * 			   	2) Return true or false based on success or failure
  */
 bool MP2Node::createKeyValue(string key, string value, ReplicaType replica) {
-	/*
-	 * Implement this
-	 */
-	// Insert key, value, replicaType into the hash table
+    return ht->create(key, value);
 }
 
 /**
@@ -186,10 +183,7 @@ bool MP2Node::createKeyValue(string key, string value, ReplicaType replica) {
  * 			    2) Return value
  */
 string MP2Node::readKey(string key) {
-	/*
-	 * Implement this
-	 */
-	// Read key from local hash table and return value
+    return ht->read(key);
 }
 
 /**
@@ -201,10 +195,7 @@ string MP2Node::readKey(string key) {
  * 				2) Return true or false based on success or failure
  */
 bool MP2Node::updateKeyValue(string key, string value, ReplicaType replica) {
-	/*
-	 * Implement this
-	 */
-	// Update key in local hash table and return true or false
+    return ht->update(key, value);
 }
 
 /**
@@ -216,10 +207,7 @@ bool MP2Node::updateKeyValue(string key, string value, ReplicaType replica) {
  * 				2) Return true or false based on success or failure
  */
 bool MP2Node::deletekey(string key) {
-	/*
-	 * Implement this
-	 */
-	// Delete the key from the local hash table
+    return ht->deleteKey(key);
 }
 
 /**
@@ -231,15 +219,9 @@ bool MP2Node::deletekey(string key) {
  * 				2) Handles the messages according to message types
  */
 void MP2Node::checkMessages() {
-	/*
-	 * Implement this. Parts of it are already implemented
-	 */
 	char * data;
 	int size;
-
-	/*
-	 * Declare your local variables here
-	 */
+    bool result;
 
 	// dequeue all messages and handle them
 	while ( !memberNode->mp2q.empty() ) {
@@ -251,10 +233,45 @@ void MP2Node::checkMessages() {
 		memberNode->mp2q.pop();
 
 		string message(data, data + size);
+        Message msg(message);
 
-		/*
-		 * Handle the message types here
-		 */
+        switch (msg.type) {
+           case MessageType::CREATE:
+           {
+               result = createKeyValue(msg.key, msg.value, msg.replica);
+               Message replyMsg(msg.transID, this->memberNode->addr,
+                                MessageType::REPLY, result);
+               emulNet->ENsend(&this->memberNode->addr, &msg.fromAddr, replyMsg.toString());
+           }
+           break;
+           case MessageType::READ:
+           {
+
+           }
+           break;
+           case MessageType::UPDATE:
+           {
+
+           }
+           break;
+           case MessageType::DELETE:
+           {
+
+           }
+           break;
+           case MessageType::REPLY:
+           {
+
+           }
+           break;
+           case MessageType::READREPLY:
+           {
+
+           }
+           break;
+           default:
+               printf("Unidentified message received of type::%d.\n", msg.type);
+        }
 
 	}
 
@@ -367,14 +384,18 @@ void MP2Node::findNeighbors() {
 
 
 /**
- * This method dispatches the messages to all the secondary replicas of the key.
+ * This method dispatches the messages to the secondary/tertiary replica of the key.
  * @param message IN: Message to send.
  */
 
 void MP2Node::dispatchMessages(Message message) {
-    vector<Node>::iterator it;
-    for (it = hasMyReplicas.begin(); it != hasMyReplicas.end(); ++it) {
-        Node& node = *it;
-        emulNet->ENsend(&memberNode->addr, &node.nodeAddress, message.toString());
-    }
+    assert(hasMyReplicas.size() == 2);
+
+    // Dispatch a message to the SECONDARY replica.
+    message.replica = ReplicaType::SECONDARY;
+    emulNet->ENsend(&memberNode->addr, &hasMyReplicas[0].nodeAddress, message.toString());
+
+    // Dispatch a message to the TERTIARY replica.
+    message.replica = ReplicaType::TERTIARY;
+    emulNet->ENsend(&memberNode->addr, &hasMyReplicas[1].nodeAddress, message.toString());
 }
