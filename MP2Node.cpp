@@ -56,10 +56,32 @@ void MP2Node::updateRing() {
 	/*
 	 * Step 3: Run the stabilization protocol IF REQUIRED
 	 */
-	// Run stabilization protocol if the hash table size is greater than zero and if there has been a changed in the ring
+    // Run stabilization protocol if the hash table size is greater than zero and if there has been a changed in the ring
+    if (ht->currentSize() > 0) { // If the hash table size if greater than zero.
+        change = true;
+    }
+
+    if (curMemList.size() != this->ring.size()) { // if the ring size change.
+        change = true;
+    }
+
+    // Check if any member node in the ring changed.
+    std::vector<Node>::iterator it1, it2;
+    for (it1 = curMemList.begin(), it2 = this->ring.begin(); it1 != curMemList.end(); ++it1, ++it2) {
+        Node& node1 = *it1;
+        Node& node2 = *it2;
+        if (node1.nodeAddress != node2.nodeAddress) {
+            change = true;
+            break;
+        }
+    }
 
     // Initialize the ring based upong this sorted membership list.
     this->ring = curMemList;
+
+    if (change) {
+        stabilizationProtocol();
+    }
 }
 
 /**
