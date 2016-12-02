@@ -79,11 +79,18 @@ void MP2Node::updateRing() {
         }
     }
 
+    // Get a copy of the old "hasMyReplicas"
+    vector<Node> oldHasMyReplicas = hasMyReplicas;
+
     // Initialize the ring based upon this sorted membership list.
     this->ring = curMemList;
+    assert(this->ring.size() >= 3);
+
+    // Populate the "haveReplicasOf" and "hasMyReplicas" neighbors.
+    findNeighbors();
 
     if ((ht->currentSize() > 0) && change) {
-        stabilizationProtocol();
+        stabilizationProtocol(oldHasMyReplicas);
     }
 }
 
@@ -333,12 +340,12 @@ void MP2Node::checkMessages() {
 	}
 
     // Verify that we received replies from all the replicas of the key.
-    std::map<uint64_t, size_t>::iterator it;
-    for (it = replyCount.begin(); it != replyCount.end(); ++it) {
-        // Verify that we received reply from SECONDARY AND TERTIARY copy of the replica.
-        assert(it->second == 2);
-    }
-    replyCount.clear();
+    //std::map<uint64_t, size_t>::iterator it;
+    //for (it = replyCount.begin(); it != replyCount.end(); ++it) {
+    //    // Verify that we received reply from SECONDARY AND TERTIARY copy of the replica.
+    //    assert(it->second == 2);
+    //}
+    //replyCount.clear();
 }
 
 /**
@@ -405,11 +412,7 @@ int MP2Node::enqueueWrapper(void *env, char *buff, int size) {
  *				1) Ensures that there are three "CORRECT" replicas of all the keys in spite of failures and joins
  *				Note:- "CORRECT" replicas implies that every key is replicated in its two neighboring nodes in the ring
  */
-void MP2Node::stabilizationProtocol() {
-    vector<Node> oldHasMyReplicas = hasMyReplicas;
-
-    // Obtain the new has "hasMyReplicas".
-    findNeighbors();
+void MP2Node::stabilizationProtocol(vector<Node>& oldHasMyReplicas) {
 
     // Check if my neighbors have changed. If yes, bring them up to speed with
     // my local key-value store.
@@ -449,10 +452,10 @@ void MP2Node::findNeighbors() {
     hasMyReplicas.push_back(ring[(i+1) % ring.size()]);
     hasMyReplicas.push_back(ring[(i+2) % ring.size()]);
 
-    // Populate the vector with nodes whose secondary replica I am holding.
+    // Populate the vector with nodes whose secondary/tertiary replica I am holding.
     haveReplicasOf.clear();
-    haveReplicasOf.push_back(ring[(i-2) % ring.size()]);
-    haveReplicasOf.push_back(ring[(i-1) % ring.size()]);
+    haveReplicasOf.push_back(ring[(ring.size() + i - 2) % ring.size()]);
+    haveReplicasOf.push_back(ring[(ring.size() + i - 1) % ring.size()]);
 }
 
 

@@ -93,7 +93,7 @@ public:
 	bool deletekey(string key);
 
 	// stabilization protocol - handle multiple failures
-	void stabilizationProtocol();
+    void stabilizationProtocol(vector<Node>& oldHasMyReplicas);
 
 	~MP2Node();
 };
