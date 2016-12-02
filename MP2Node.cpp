@@ -5,6 +5,19 @@
  **********************************/
 #include "MP2Node.h"
 
+bool operator!=(Address& addr1, Address& addr2) {
+    return !addr1.operator==(addr2);
+}
+
+bool operator==(const Node& node1, const Node& node2) {
+    return node1.nodeAddress == node2.nodeAddress;
+}
+
+bool operator!=(const Node& node1, const Node& node2) {
+    return !operator==(node1, node2);
+}
+
+
 /**
  * constructor
  */
