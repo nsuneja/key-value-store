@@ -51,6 +51,10 @@ private:
 	Log * log;
     // Transaction counter
     std::atomic<uint64_t> curTransId;
+    // Map to track number of replies received for a particular transaction id.
+    std::map<uint64_t, size_t> replyCount;
+
+    void verifyReceivedMsgSource(Message& msg);
 public:
 	MP2Node(Member *memberNode, Params *par, EmulNet *emulNet, Log *log, Address *addressOfMember);
 	Member * getMemberNode() {
