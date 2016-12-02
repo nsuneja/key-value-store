@@ -72,6 +72,7 @@ void MP2Node::updateRing() {
     // Run stabilization protocol if the hash table size is greater than zero and if there has been a changed in the ring
     if (curMemList.size() != this->ring.size()) { // if the ring size change.
         change = true;
+        goto stabilize;
     }
 
     // Check if any member node in the ring changed.
@@ -85,7 +86,8 @@ void MP2Node::updateRing() {
         }
     }
 
-    // Initialize the ring based upong this sorted membership list.
+stabilize:
+    // Initialize the ring based upon this sorted membership list.
     this->ring = curMemList;
 
     if ((ht->currentSize() > 0) && change) {
