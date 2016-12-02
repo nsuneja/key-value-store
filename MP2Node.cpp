@@ -9,14 +9,6 @@ bool operator!=(Address& addr1, Address& addr2) {
     return !addr1.operator==(addr2);
 }
 
-bool operator==(const Node& node1, const Node& node2) {
-    return node1.nodeAddress == node2.nodeAddress;
-}
-
-bool operator!=(const Node& node1, const Node& node2) {
-    return !operator==(node1, node2);
-}
-
 
 /**
  * constructor
@@ -72,21 +64,21 @@ void MP2Node::updateRing() {
     // Run stabilization protocol if the hash table size is greater than zero and if there has been a changed in the ring
     if (curMemList.size() != this->ring.size()) { // if the ring size change.
         change = true;
-        goto stabilize;
     }
 
-    // Check if any member node in the ring changed.
-    std::vector<Node>::iterator it1, it2;
-    for (it1 = curMemList.begin(), it2 = this->ring.begin(); it1 != curMemList.end(); ++it1, ++it2) {
-        Node& node1 = *it1;
-        Node& node2 = *it2;
-        if (node1.nodeAddress != node2.nodeAddress) {
-            change = true;
-            break;
+    if (!change) {
+        // Check if any member node in the ring changed.
+        std::vector<Node>::iterator it1, it2;
+        for (it1 = curMemList.begin(), it2 = this->ring.begin(); it1 != curMemList.end(); ++it1, ++it2) {
+            Node& node1 = *it1;
+            Node& node2 = *it2;
+            if (node1.nodeAddress != node2.nodeAddress) {
+                change = true;
+                break;
+            }
         }
     }
 
-stabilize:
     // Initialize the ring based upon this sorted membership list.
     this->ring = curMemList;
 
@@ -421,7 +413,8 @@ void MP2Node::stabilizationProtocol() {
 
     // Check if my neighbors have changed. If yes, bring them up to speed with
     // my local key-value store.
-    if ((oldHasMyReplicas[0] != hasMyReplicas[0]) || (oldHasMyReplicas[1] != hasMyReplicas[1])) {
+    if ((oldHasMyReplicas[0].nodeAddress != hasMyReplicas[0].nodeAddress) ||
+         (oldHasMyReplicas[1].nodeAddress != hasMyReplicas[1].nodeAddress)) {
         // One of the neighbors changed. Iterate over all the keys in the datastore
         // and dispatch messages for each one.
         std::map<string, string>::iterator it;
