@@ -57,10 +57,6 @@ void MP2Node::updateRing() {
 	 * Step 3: Run the stabilization protocol IF REQUIRED
 	 */
     // Run stabilization protocol if the hash table size is greater than zero and if there has been a changed in the ring
-    if (ht->currentSize() > 0) { // If the hash table size if greater than zero.
-        change = true;
-    }
-
     if (curMemList.size() != this->ring.size()) { // if the ring size change.
         change = true;
     }
@@ -79,7 +75,7 @@ void MP2Node::updateRing() {
     // Initialize the ring based upong this sorted membership list.
     this->ring = curMemList;
 
-    if (change) {
+    if ((ht->currentSize() > 0) && change) {
         stabilizationProtocol();
     }
 }
@@ -335,6 +331,7 @@ void MP2Node::checkMessages() {
         // Verify that we received reply from SECONDARY AND TERTIARY copy of the replica.
         assert(it->second == 2);
     }
+    replyCount.clear();
 }
 
 /**
@@ -402,9 +399,21 @@ int MP2Node::enqueueWrapper(void *env, char *buff, int size) {
  *				Note:- "CORRECT" replicas implies that every key is replicated in its two neighboring nodes in the ring
  */
 void MP2Node::stabilizationProtocol() {
-	/*
-	 * Implement this
-	 */
+    vector<Node> oldHasMyReplicas = hasMyReplicas;
+
+    // Obtain the new has "hasMyReplicas".
+    findNeighbors();
+
+    // Check if my neighbors have changed. If yes, bring them up to speed with
+    // my local key-value store.
+    if ((oldHasMyReplicas[0] != hasMyReplicas[0]) || (oldHasMyReplicas[1] != hasMyReplicas[1])) {
+        // One of the neighbors changed. Iterate over all the keys in the datastore
+        // and dispatch messages for each one.
+        std::map<string, string>::iterator it;
+        for (it = ht->hashTable.begin(); it != ht->hashTable.end(); ++it) {
+            clientCreate(it->first, it->second);
+        }
+    }
 }
 
 
