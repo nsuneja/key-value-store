@@ -49,12 +49,10 @@ private:
 	EmulNet * emulNet;
 	// Object of Log
 	Log * log;
-    // Transaction counter
-    std::atomic<uint64_t> curTransId;
-    // Map to track number of replies received for a particular transaction id.
-    std::map<uint64_t, size_t> replyCount;
-
-    void verifyReceivedMsgSource(Message& msg);
+    // Map to track replies received for a particular request message.
+    std::map<Message, vector<Message>> requestRepliesMap;
+    // Log message event
+    void logEvent(const Message& msg, bool isCoordinator, bool result);
 public:
 	MP2Node(Member *memberNode, Params *par, EmulNet *emulNet, Log *log, Address *addressOfMember);
 	Member * getMemberNode() {
@@ -87,10 +85,10 @@ public:
 	vector<Node> findNodes(string key);
 
 	// server
-	bool createKeyValue(string key, string value, ReplicaType replica);
-	string readKey(string key);
-	bool updateKeyValue(string key, string value, ReplicaType replica);
-	bool deletekey(string key);
+    bool createKeyValue(string key, string value, ReplicaType replica);
+    string readKey(string key);
+    bool updateKeyValue(string key, string value, ReplicaType replica);
+    bool deletekey(string key);
 
 	// stabilization protocol - handle multiple failures
     void stabilizationProtocol(vector<Node>& oldHasMyReplicas);

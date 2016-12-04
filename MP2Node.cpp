@@ -5,10 +5,20 @@
  **********************************/
 #include "MP2Node.h"
 
+static const int numReplicas = 3;
+static const int quorumSize = 2;
+
 bool operator!=(Address& addr1, Address& addr2) {
     return !addr1.operator==(addr2);
 }
 
+bool operator<(const Message& msg1, const Message& msg2) {
+    return msg1.transID < msg2.transID;
+}
+
+bool operator==(const Message& msg1, const Message& msg2) {
+    return msg1.transID == msg2.transID;
+}
 
 /**
  * constructor
@@ -20,7 +30,6 @@ MP2Node::MP2Node(Member *memberNode, Params *par, EmulNet * emulNet, Log * log, 
 	this->log = log;
 	ht = new HashTable();
 	this->memberNode->addr = *address;
-    this->curTransId = 1;
 }
 
 /**
@@ -84,7 +93,7 @@ void MP2Node::updateRing() {
 
     // Initialize the ring based upon this sorted membership list.
     this->ring = curMemList;
-    assert(this->ring.size() >= 3);
+    assert(this->ring.size() >= numReplicas);
 
     // Populate the "haveReplicasOf" and "hasMyReplicas" neighbors.
     findNeighbors();
@@ -143,9 +152,7 @@ size_t MP2Node::hashFunction(string key) {
  * 				3) Sends a message to the replica
  */
 void MP2Node::clientCreate(string key, string value) {
-    Message msg(curTransId++, this->memberNode->addr, MessageType::CREATE, key, value);
-    (void)createKeyValue(key, value, ReplicaType::PRIMARY);
-    findNeighbors();
+    Message msg(++g_transID, this->memberNode->addr, MessageType::CREATE, key, value);
     dispatchMessages(msg);
 }
 
@@ -159,8 +166,7 @@ void MP2Node::clientCreate(string key, string value) {
  * 				3) Sends a message to the replica
  */
 void MP2Node::clientRead(string key) {
-    Message msg(curTransId++, this->memberNode->addr, MessageType::READ, key);
-    findNeighbors();
+    Message msg(++g_transID, this->memberNode->addr, MessageType::READ, key);
     dispatchMessages(msg);
 
 }
@@ -175,9 +181,7 @@ void MP2Node::clientRead(string key) {
  * 				3) Sends a message to the replica
  */
 void MP2Node::clientUpdate(string key, string value){
-    Message msg(curTransId++, this->memberNode->addr, MessageType::UPDATE, key);
-    updateKeyValue(key, value, ReplicaType::PRIMARY);
-    findNeighbors();
+    Message msg(++g_transID, this->memberNode->addr, MessageType::UPDATE, key);
     dispatchMessages(msg);
 }
 
@@ -191,9 +195,7 @@ void MP2Node::clientUpdate(string key, string value){
  * 				3) Sends a message to the replica
  */
 void MP2Node::clientDelete(string key){
-    Message msg(curTransId++, this->memberNode->addr, MessageType::DELETE, key);
-    deletekey(key);
-    findNeighbors();
+    Message msg(++g_transID, this->memberNode->addr, MessageType::DELETE, key);
     dispatchMessages(msg);
 }
 
@@ -247,18 +249,39 @@ bool MP2Node::deletekey(string key) {
 
 
 /**
- * @brief This method verifies the source of the message by checking that the
- * message originates from a replica whose SECONDARY or TERTIARY replica we have.
- * @param msg IN: Received message.
+ * @brief MP2Node::logEvent
+ * @param msg
+ * @param isCoordinator
+ * @param result
  */
-void
-MP2Node::verifyReceivedMsgSource(Message& msg)
-{
-    // Verify that I should have a secondary or tertiary copy of the
-    // replica.
-    assert(haveReplicasOf.size() == 2);
-    assert(haveReplicasOf[0].nodeAddress == msg.fromAddr ||
-           haveReplicasOf[1].nodeAddress == msg.fromAddr);
+void MP2Node::logEvent(const Message& msg, bool isCoordinator, bool result) {
+    switch(msg.type) {
+        case MessageType::CREATE:
+        {
+            if (result) {
+                log->logCreateSuccess(&this->memberNode->addr, isCoordinator,
+                                      msg.transID, msg.key, msg.value);
+            } else {
+                log->logCreateFail(&this->memberNode->addr, isCoordinator,
+                                   msg.transID, msg.key, msg.value);
+            }
+         }
+         break;
+         case MessageType::READ:
+         {}
+         break;
+         case MessageType::UPDATE:
+         {}
+         break;
+         case MessageType::DELETE:
+         break;
+         case MessageType::REPLY:
+         case MessageType::READREPLY:
+             // We should not be logging events for these messages.
+             assert(0);
+         default:
+            printf("Unidentified message received of type::%d.\n", msg.type);
+    }
 }
 
 /**
@@ -289,8 +312,8 @@ void MP2Node::checkMessages() {
         switch (msg.type) {
            case MessageType::CREATE:
            {
-               verifyReceivedMsgSource(msg);
                result = createKeyValue(msg.key, msg.value, msg.replica);
+               logEvent(msg, false, result);
                Message replyMsg(msg.transID, this->memberNode->addr,
                                 MessageType::REPLY, result);
                emulNet->ENsend(&this->memberNode->addr, &msg.fromAddr,
@@ -299,8 +322,8 @@ void MP2Node::checkMessages() {
            break;
            case MessageType::READ:
            {
-               verifyReceivedMsgSource(msg);
-               string value(readKey(msg.key));
+               string value = readKey(msg.key);
+               logEvent(msg, false, result);
                Message replyMsg(msg.transID, this->memberNode->addr, value);
                emulNet->ENsend(&this->memberNode->addr, &msg.fromAddr,
                                replyMsg.toString());
@@ -308,8 +331,8 @@ void MP2Node::checkMessages() {
            break;
            case MessageType::UPDATE:
            {
-               verifyReceivedMsgSource(msg);
                result = updateKeyValue(msg.key, msg.value, msg.replica);
+               logEvent(msg, false, result);
                Message replyMsg(msg.transID, this->memberNode->addr,
                                 MessageType::REPLY, result);
                emulNet->ENsend(&this->memberNode->addr, &msg.fromAddr,
@@ -318,8 +341,8 @@ void MP2Node::checkMessages() {
            break;
            case MessageType::DELETE:
            {
-               verifyReceivedMsgSource(msg);
                result = deletekey(msg.key);
+               logEvent(msg, false, result);
                Message replyMsg(msg.transID, this->memberNode->addr,
                                 MessageType::REPLY, result);
                emulNet->ENsend(&this->memberNode->addr, &msg.fromAddr,
@@ -330,8 +353,14 @@ void MP2Node::checkMessages() {
            case MessageType::READREPLY:
            {
                // Bump up the reply count.
-               assert(replyCount.find(msg.transID) != replyCount.end());
-               replyCount[msg.transID]++;
+               if (requestRepliesMap.find(msg) == requestRepliesMap.end()) {
+                   // We received a reply for a message which doesnt exist in the
+                   // request/reply anymore. This means that we received quorum
+                   // number of replies for this request. Ignoring this reply.
+               } else {
+                   vector<Message>& replies = requestRepliesMap[msg];
+                   replies.push_back(msg);
+               }
            }
            break;
            default:
@@ -339,13 +368,36 @@ void MP2Node::checkMessages() {
         }
 	}
 
-    // Verify that we received replies from all the replicas of the key.
-    //std::map<uint64_t, size_t>::iterator it;
-    //for (it = replyCount.begin(); it != replyCount.end(); ++it) {
-    //    // Verify that we received reply from SECONDARY AND TERTIARY copy of the replica.
-    //    assert(it->second == 2);
-    //}
-    //replyCount.clear();
+    // Verify that we received successful replies from atleast QUORUM number of replicas.
+    std::map<Message, std::vector<Message>>::iterator map_it = requestRepliesMap.begin();
+    while (map_it != requestRepliesMap.end()) {
+        const Message& request = map_it->first;
+        std::vector<Message>& replies = map_it->second;
+        if (replies.size() >= quorumSize) {
+            std::vector<Message>::iterator vector_it;
+            size_t successReplyCount = 0;
+            // Count the number of successful replies.
+            for (vector_it = replies.begin(); vector_it != replies.end(); ++vector_it) {
+                Message& reply = *vector_it;
+                if (reply.success) {
+                    successReplyCount++;
+                }
+            }
+            if (successReplyCount >= quorumSize) {
+                logEvent(request, true, true);
+                // Remove the request from the map, as we successfully acknowledged it.
+                requestRepliesMap.erase(request);
+                // Reset the iterator to the beginning.
+                map_it = requestRepliesMap.begin();
+            } else {
+                // Move to the next request.
+                map_it++;
+            }
+        } else {
+            // Move to the next request
+            map_it++;
+        }
+    }
 }
 
 /**
@@ -357,7 +409,7 @@ void MP2Node::checkMessages() {
 vector<Node> MP2Node::findNodes(string key) {
 	size_t pos = hashFunction(key);
 	vector<Node> addr_vec;
-	if (ring.size() >= 3) {
+    if (ring.size() >= numReplicas) {
 		// if pos <= min || pos > max, the leader is the min
 		if (pos <= ring.at(0).getHashCode() || pos > ring.at(ring.size()-1).getHashCode()) {
 			addr_vec.emplace_back(ring.at(0));
@@ -445,7 +497,7 @@ void MP2Node::findNeighbors() {
     }
 
     assert(i != ring.size()); // Ensure that I always find myself in the ring.
-    assert(ring.size() >= 3); // Since each key has 3 replicas.
+    assert(ring.size() >= numReplicas); // Since each key has 3 replicas.
 
     // Populate the vector with nodes holding my secondary replicas.
     hasMyReplicas.clear();
@@ -460,21 +512,26 @@ void MP2Node::findNeighbors() {
 
 
 /**
- * This method dispatches the messages to the secondary/tertiary replica of the key.
+ * This method dispatches the messages to the primay/secondary/tertiary replica of the key.
  * @param message IN: Message to send.
  */
 
 void MP2Node::dispatchMessages(Message message) {
-    assert(hasMyReplicas.size() == 2);
+    vector<Node> replicas = findNodes(message.key);
+    assert(replicas.size() == numReplicas);
+
+    // Dispatch a message to the PRIMARY replica.
+    message.replica = ReplicaType::PRIMARY;
+    emulNet->ENsend(&memberNode->addr, &replicas[0].nodeAddress, message.toString());
 
     // Dispatch a message to the SECONDARY replica.
     message.replica = ReplicaType::SECONDARY;
-    emulNet->ENsend(&memberNode->addr, &hasMyReplicas[0].nodeAddress, message.toString());
+    emulNet->ENsend(&memberNode->addr, &replicas[1].nodeAddress, message.toString());
 
     // Dispatch a message to the TERTIARY replica.
     message.replica = ReplicaType::TERTIARY;
-    emulNet->ENsend(&memberNode->addr, &hasMyReplicas[1].nodeAddress, message.toString());
+    emulNet->ENsend(&memberNode->addr, &replicas[2].nodeAddress, message.toString());
 
-    // Set the reply counter to zero.
-    replyCount[message.transID] = 0;
+    // Insert an entry for this request.
+    requestRepliesMap[message] = std::vector<Message>();
 }
