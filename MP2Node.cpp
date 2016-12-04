@@ -252,9 +252,11 @@ bool MP2Node::deletekey(string key) {
  * @brief MP2Node::logEvent
  * @param msg
  * @param isCoordinator
+ * @param readResult
  * @param result
  */
-void MP2Node::logEvent(const Message& msg, bool isCoordinator, bool result) {
+void MP2Node::logEvent(const Message& msg, bool isCoordinator, bool result,
+                       string readResult) {
     switch(msg.type) {
         case MessageType::CREATE:
         {
@@ -268,12 +270,34 @@ void MP2Node::logEvent(const Message& msg, bool isCoordinator, bool result) {
          }
          break;
          case MessageType::READ:
-         {}
+         {
+            if (result) {
+                log->logReadSuccess(&this->memberNode->addr, isCoordinator,
+                                    msg.transID, msg.key, readResult);
+            } else {
+                log->logReadFail(&this->memberNode->addr, isCoordinator, msg.transID, msg.key);
+            }
+         }
          break;
          case MessageType::UPDATE:
-         {}
+         {
+            if (result) {
+                log->logUpdateSuccess(&this->memberNode->addr, isCoordinator,
+                                    msg.transID, msg.key, msg.value);
+            } else {
+                log->logUpdateFail(&this->memberNode->addr, isCoordinator,
+                                   msg.transID, msg.key, msg.value);
+            }
+         }
          break;
          case MessageType::DELETE:
+            if (result) {
+                log->logDeleteSuccess(&this->memberNode->addr, isCoordinator,
+                                      msg.transID, msg.key);
+            } else {
+                log->logDeleteFail(&this->memberNode->addr, isCoordinator,
+                                   msg.transID, msg.key);
+            }
          break;
          case MessageType::REPLY:
          case MessageType::READREPLY:
@@ -323,7 +347,7 @@ void MP2Node::checkMessages() {
            case MessageType::READ:
            {
                string value = readKey(msg.key);
-               logEvent(msg, false, result);
+               logEvent(msg, false, true, value);
                Message replyMsg(msg.transID, this->memberNode->addr, value);
                emulNet->ENsend(&this->memberNode->addr, &msg.fromAddr,
                                replyMsg.toString());
@@ -388,6 +412,13 @@ void MP2Node::checkMessages() {
                 // Remove the request from the map, as we successfully acknowledged it.
                 requestRepliesMap.erase(request);
                 // Reset the iterator to the beginning.
+                map_it = requestRepliesMap.begin();
+            } else if (replies.size() == numReplicas) {
+                // We received all the replies for a request from all the replicas
+                // but not "quorumSize" number of successful replies. Marking
+                // the request as failed.
+                logEvent(request, true, false);
+                requestRepliesMap.erase(request);
                 map_it = requestRepliesMap.begin();
             } else {
                 // Move to the next request.

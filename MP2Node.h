@@ -52,7 +52,7 @@ private:
     // Map to track replies received for a particular request message.
     std::map<Message, vector<Message>> requestRepliesMap;
     // Log message event
-    void logEvent(const Message& msg, bool isCoordinator, bool result);
+    void logEvent(const Message& msg, bool isCoordinator, bool result, string readResult = string());
 public:
 	MP2Node(Member *memberNode, Params *par, EmulNet *emulNet, Log *log, Address *addressOfMember);
 	Member * getMemberNode() {
