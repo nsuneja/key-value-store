@@ -7,6 +7,9 @@
 
 static const int numReplicas = 3;
 static const int quorumSize = 2;
+// Time after which we stop waiting for the replies for a request, and purge
+// the cached request.
+static const int requestTimeout = 5;
 
 bool operator!=(Address& addr1, Address& addr2) {
     return !addr1.operator==(addr2);
@@ -38,6 +41,28 @@ MP2Node::MP2Node(Member *memberNode, Params *par, EmulNet * emulNet, Log * log, 
 MP2Node::~MP2Node() {
 	delete ht;
 	delete memberNode;
+}
+
+/**
+ * @brief This method handles the requests which have been queued up beyond the
+ *        "requestTimeout" time units.
+ */
+void MP2Node::handleTimedoutRequests() {
+    auto map_it = requestRepliesMap.begin();
+    while (map_it != requestRepliesMap.end()) {
+        const Message& request = map_it->first;
+        int curTs = par->getcurrtime();
+        int requestTs = std::get<0>(map_it->second);
+        if (curTs - requestTs > requestTimeout) {
+            // We didnt receive "quorumSize" number of replies within timeout
+            // duration. Fail the request.
+            logEvent(request, true, false);
+            requestRepliesMap.erase(request);
+            map_it = requestRepliesMap.begin();
+        } else {
+            map_it++;
+        }
+    }
 }
 
 /**
@@ -101,6 +126,9 @@ void MP2Node::updateRing() {
     if ((ht->currentSize() > 0) && change) {
         stabilizationProtocol(oldHasMyReplicas);
     }
+
+    // Handle the requests which have timed out.
+    handleTimedoutRequests();
 }
 
 /**
@@ -181,7 +209,7 @@ void MP2Node::clientRead(string key) {
  * 				3) Sends a message to the replica
  */
 void MP2Node::clientUpdate(string key, string value){
-    Message msg(++g_transID, this->memberNode->addr, MessageType::UPDATE, key);
+    Message msg(++g_transID, this->memberNode->addr, MessageType::UPDATE, key, value);
     dispatchMessages(msg);
 }
 
@@ -347,7 +375,7 @@ void MP2Node::checkMessages() {
            case MessageType::READ:
            {
                string value = readKey(msg.key);
-               logEvent(msg, false, true, value);
+               logEvent(msg, false, value == "" ? false : true, value);
                Message replyMsg(msg.transID, this->memberNode->addr, value);
                emulNet->ENsend(&this->memberNode->addr, &msg.fromAddr,
                                replyMsg.toString());
@@ -382,7 +410,7 @@ void MP2Node::checkMessages() {
                    // request/reply anymore. This means that we received quorum
                    // number of replies for this request. Ignoring this reply.
                } else {
-                   vector<Message>& replies = requestRepliesMap[msg];
+                   vector<Message>& replies = std::get<1>(requestRepliesMap[msg]);
                    replies.push_back(msg);
                }
            }
@@ -393,39 +421,51 @@ void MP2Node::checkMessages() {
 	}
 
     // Verify that we received successful replies from atleast QUORUM number of replicas.
-    std::map<Message, std::vector<Message>>::iterator map_it = requestRepliesMap.begin();
+    auto map_it = requestRepliesMap.begin();
     while (map_it != requestRepliesMap.end()) {
         const Message& request = map_it->first;
-        std::vector<Message>& replies = map_it->second;
+        std::vector<Message>& replies = std::get<1>(map_it->second);
         if (replies.size() >= quorumSize) {
-            std::vector<Message>::iterator vector_it;
-            size_t successReplyCount = 0;
-            // Count the number of successful replies.
-            for (vector_it = replies.begin(); vector_it != replies.end(); ++vector_it) {
-                Message& reply = *vector_it;
-                if (reply.success) {
-                    successReplyCount++;
-                }
-            }
-            if (successReplyCount >= quorumSize) {
-                logEvent(request, true, true);
+            if (request.type == MessageType::READ) {
+                // Read the value from one of the READREPLY messages
+                assert(replies[0].type == MessageType::READREPLY);
+                logEvent(request, true, true, replies[0].value);
                 // Remove the request from the map, as we successfully acknowledged it.
                 requestRepliesMap.erase(request);
                 // Reset the iterator to the beginning.
                 map_it = requestRepliesMap.begin();
-            } else if (replies.size() == numReplicas) {
-                // We received all the replies for a request from all the replicas
-                // but not "quorumSize" number of successful replies. Marking
-                // the request as failed.
-                logEvent(request, true, false);
-                requestRepliesMap.erase(request);
-                map_it = requestRepliesMap.begin();
             } else {
-                // Move to the next request.
-                map_it++;
+                assert(replies[0].type == MessageType::REPLY);
+                // Count the number of successful replies.
+                std::vector<Message>::iterator vector_it;
+                size_t successReplyCount = 0;
+                for (vector_it = replies.begin(); vector_it != replies.end(); ++vector_it) {
+                    Message& reply = *vector_it;
+                    if (reply.success) {
+                        successReplyCount++;
+                    }
+                }
+                if (successReplyCount >= quorumSize) {
+                    logEvent(request, true, true);
+                    // Remove the request from the map, as we successfully acknowledged it.
+                    requestRepliesMap.erase(request);
+                    // Reset the iterator to the beginning.
+                    map_it = requestRepliesMap.begin();
+                } else if (replies.size() == numReplicas) {
+                    // We received all the replies for a request from all the replicas
+                    // but not "quorumSize" number of successful replies. Marking
+                    // the request as failed.
+                    logEvent(request, true, false);
+                    requestRepliesMap.erase(request);
+                    map_it = requestRepliesMap.begin();
+                } else {
+                    // Move to the next request.
+                    map_it++;
+                }
             }
         } else {
-            // Move to the next request
+            // Move to the next request, since we havent received "quorumSize"
+            // replies yet.
             map_it++;
         }
     }
@@ -501,8 +541,8 @@ void MP2Node::stabilizationProtocol(vector<Node>& oldHasMyReplicas) {
     // my local key-value store.
     if ((oldHasMyReplicas[0].nodeAddress != hasMyReplicas[0].nodeAddress) ||
          (oldHasMyReplicas[1].nodeAddress != hasMyReplicas[1].nodeAddress)) {
-        // One of the neighbors changed. Iterate over all the keys in the datastore
-        // and dispatch messages for each one.
+        // One or both of the neighbors changed. Iterate over all the keys in the
+        // datastore and dispatch messages for each one.
         std::map<string, string>::iterator it;
         for (it = ht->hashTable.begin(); it != ht->hashTable.end(); ++it) {
             clientCreate(it->first, it->second);
@@ -564,5 +604,6 @@ void MP2Node::dispatchMessages(Message message) {
     emulNet->ENsend(&memberNode->addr, &replicas[2].nodeAddress, message.toString());
 
     // Insert an entry for this request.
-    requestRepliesMap[message] = std::vector<Message>();
+    auto tuple = std::make_tuple(par->getcurrtime(), std::vector<Message>());
+    requestRepliesMap[message] = tuple;
 }

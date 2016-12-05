@@ -50,7 +50,7 @@ private:
 	// Object of Log
 	Log * log;
     // Map to track replies received for a particular request message.
-    std::map<Message, vector<Message>> requestRepliesMap;
+    std::map<Message, std::tuple<int, vector<Message>>> requestRepliesMap;
     // Log message event
     void logEvent(const Message& msg, bool isCoordinator, bool result, string readResult = string());
 public:
@@ -92,6 +92,8 @@ public:
 
 	// stabilization protocol - handle multiple failures
     void stabilizationProtocol(vector<Node>& oldHasMyReplicas);
+
+    void handleTimedoutRequests();
 
 	~MP2Node();
 };
